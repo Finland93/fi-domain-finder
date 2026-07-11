@@ -1,0 +1,605 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>.fi Short Domain Finder — free 2 &amp; 3 character .fi domains</title>
+<meta name="description" content="Scan every short .fi domain (2 and 3 characters, letters + digits + å ä ö) and find which ones are still free, using public RDAP.">
+<style>
+  :root{
+    --bg:#0a0e14;
+    --panel:#0f141d;
+    --line:#1c2430;
+    --dim:#3a4656;
+    --text:#c8d3e0;
+    --muted:#5f6f82;
+    --free:#22d3ee;      /* free: bright cyan */
+    --taken:#2b3543;     /* taken: dimmed */
+    --taken-text:#4a5768;
+    --check:#f5c451;     /* checking: yellow */
+    --err:#e0607e;       /* error/unsure: red */
+    --scand:#a78bfa;     /* IDN accent: violet */
+    --ok:#4ade80;        /* success green */
+    --mono:'SF Mono','JetBrains Mono','Fira Code',ui-monospace,'Cascadia Code',Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{background:var(--bg);color:var(--text);font-family:var(--mono);-webkit-font-smoothing:antialiased}
+  body{padding:24px 20px 90px;max-width:1180px;margin:0 auto}
+
+  header{border-bottom:1px solid var(--line);padding-bottom:18px;margin-bottom:22px}
+  .title{font-size:15px;letter-spacing:2px;text-transform:uppercase;color:var(--text);font-weight:600}
+  .title .accent{color:var(--free)}
+  .sub{font-size:12px;color:var(--muted);margin-top:6px;line-height:1.6;max-width:720px}
+  .sub code{color:var(--scand);background:var(--panel);padding:1px 5px;border-radius:3px;font-size:11px}
+  .repo-link{font-size:11px;color:var(--muted);margin-top:8px}
+  .repo-link a{color:var(--free);text-decoration:none;border-bottom:1px dotted var(--free)}
+
+  /* length tabs */
+  .tabs{display:flex;gap:8px;margin:18px 0 4px}
+  .tab{font-size:12px;letter-spacing:.5px;text-transform:uppercase;background:var(--panel);color:var(--muted);
+    border:1px solid var(--line);padding:9px 18px;border-radius:6px;cursor:pointer;transition:.15s}
+  .tab:hover{border-color:var(--free);color:var(--free)}
+  .tab.active{background:var(--free);color:#04121a;border-color:var(--free);font-weight:600}
+  .tab .cnt{opacity:.7;font-weight:400;margin-left:6px}
+  .tab.active .cnt{opacity:.85}
+
+  .controls{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin:14px 0 8px}
+  button{font-family:var(--mono);font-size:12px;letter-spacing:.5px;background:var(--panel);color:var(--text);
+    border:1px solid var(--line);padding:9px 16px;border-radius:5px;cursor:pointer;transition:.15s;text-transform:uppercase}
+  button:hover:not(:disabled){border-color:var(--free);color:var(--free)}
+  button:disabled{opacity:.4;cursor:not-allowed}
+  button.primary{background:var(--free);color:#04121a;border-color:var(--free);font-weight:600}
+  button.primary:hover:not(:disabled){filter:brightness(1.1);color:#04121a}
+  button.stop{border-color:var(--err);color:var(--err)}
+
+  .filters{display:flex;gap:6px;flex-wrap:wrap;margin-left:auto}
+  .chip{font-size:11px;padding:6px 11px;border:1px solid var(--line);border-radius:20px;cursor:pointer;color:var(--muted);user-select:none;transition:.15s}
+  .chip:hover{color:var(--text)}
+  .chip.on{border-color:var(--free);color:var(--free);background:rgba(34,211,238,.06)}
+
+  /* timer / ETA panel */
+  .timer{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:2px;margin:16px 0 4px;
+    border:1px solid var(--line);border-radius:8px;overflow:hidden;background:var(--line)}
+  .timer .box{background:var(--panel);padding:12px 14px;display:flex;flex-direction:column;gap:3px}
+  .timer .box .k{font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--muted)}
+  .timer .box .v{font-size:18px;font-weight:600;color:var(--text);font-variant-numeric:tabular-nums}
+  .timer .box.eta .v{color:var(--check)}
+  .timer .box.rate .v{color:var(--free)}
+  .timer .box.done .v{color:var(--ok)}
+
+  .progress{height:4px;background:var(--line);border-radius:3px;overflow:hidden;margin:12px 0 6px}
+  .bar{height:100%;width:0;background:linear-gradient(90deg,var(--free),var(--ok));transition:width .3s}
+
+  .stats{display:flex;gap:22px;flex-wrap:wrap;font-size:12px;color:var(--muted);margin-bottom:18px}
+  .stats b{color:var(--text);font-weight:600}
+  .stats .s-free b{color:var(--free)}
+  .stats .s-err b{color:var(--err)}
+
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(58px,1fr));gap:5px}
+  .grid.len3{grid-template-columns:repeat(auto-fill,minmax(66px,1fr))}
+  .cell{position:relative;aspect-ratio:1.5/1;border:1px solid var(--line);border-radius:5px;
+    display:flex;align-items:center;justify-content:center;font-size:13px;letter-spacing:.5px;
+    background:var(--panel);color:var(--dim);cursor:default;transition:.2s;overflow:hidden}
+  .cell .lbl{position:relative;z-index:2}
+  .cell.pending{color:var(--dim)}
+  .cell.queued{border-color:var(--check);color:var(--check);opacity:.5}
+  .cell.checking{border-color:var(--check);color:var(--check);animation:pulse 1s ease-in-out infinite}
+  .cell.free{border-color:var(--free);color:var(--free);background:rgba(34,211,238,.10);box-shadow:0 0 0 1px var(--free) inset}
+  .cell.free:hover{background:rgba(34,211,238,.20)}
+  .cell.taken{border-color:transparent;background:var(--taken);color:var(--taken-text)}
+  .cell.err{border-color:var(--err);color:var(--err);background:rgba(224,96,126,.07)}
+  .cell.scand::after{content:'';position:absolute;top:3px;right:3px;width:4px;height:4px;border-radius:50%;background:var(--scand);z-index:3}
+  .cell.free a{color:inherit;text-decoration:none;position:absolute;inset:0;display:flex;align-items:center;justify-content:center;z-index:4}
+  @keyframes pulse{0%,100%{opacity:.55}50%{opacity:1}}
+
+  .virt-note{font-size:11px;color:var(--muted);margin:10px 0;padding:8px 12px;border:1px dashed var(--line);border-radius:6px}
+
+  .legend{display:flex;gap:18px;flex-wrap:wrap;font-size:11px;color:var(--muted);margin:22px 0 8px;align-items:center}
+  .legend .k{display:inline-flex;align-items:center;gap:7px}
+  .sw{width:12px;height:12px;border-radius:3px;border:1px solid}
+  .sw.free{border-color:var(--free);background:rgba(34,211,238,.15)}
+  .sw.taken{border-color:transparent;background:var(--taken)}
+  .sw.check{border-color:var(--check);background:transparent}
+  .sw.err{border-color:var(--err);background:rgba(224,96,126,.1)}
+  .sw.scand{border:none;background:var(--scand);border-radius:50%;width:8px;height:8px}
+
+  .note{font-size:11px;color:var(--muted);line-height:1.7;border:1px solid var(--line);border-radius:6px;padding:14px 16px;margin-top:20px;background:var(--panel)}
+  .note b{color:var(--check)}
+  .note code{color:var(--scand)}
+  a.ext{color:var(--free);text-decoration:none;border-bottom:1px dotted var(--free)}
+
+  .freelist{margin-top:22px;border-top:1px solid var(--line);padding-top:16px}
+  .freelist .head{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:10px}
+  .freelist h3{font-size:12px;text-transform:uppercase;letter-spacing:1.5px;color:var(--free)}
+  .freelist .copybtn{font-size:10px;padding:5px 10px}
+  .freelist .items{display:flex;flex-wrap:wrap;gap:8px}
+  .freelist .fi{font-size:12px;background:rgba(34,211,238,.08);border:1px solid var(--free);color:var(--free);padding:5px 10px;border-radius:4px}
+  .freelist .fi a{color:inherit;text-decoration:none}
+  .freelist .empty{font-size:12px;color:var(--muted)}
+
+  .src-row{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--muted);margin-top:16px;flex-wrap:wrap}
+  select{font-family:var(--mono);font-size:11px;background:var(--panel);color:var(--text);border:1px solid var(--line);border-radius:4px;padding:5px 8px}
+  input[type=number]{font-family:var(--mono);width:70px;font-size:11px;background:var(--panel);color:var(--text);border:1px solid var(--line);border-radius:4px;padding:5px 8px}
+  .src-row .sep{color:var(--dim)}
+</style>
+</head>
+<body>
+<header>
+  <div class="title"><span class="accent">.fi</span> &nbsp;short domain finder</div>
+  <div class="sub">Scan every short <b>.fi</b> domain and see which are still free. Allowed characters: 26 letters (a–z), the Finnish letters <code>å ä ö</code>, and digits 0–9 &mdash; 39 characters per position. A hyphen may not be first or last, so pure 2/3-character combos never contain one. Cells with a violet dot are internationalized (IDN) names containing å/ä/ö. Checks use public <b>RDAP</b> data: results are a strong hint, but always confirm on the official registry before you register.</div>
+  <div class="repo-link">Open source &mdash; fork it, self-host it, improve it. See the <b>README</b> in the repository.</div>
+</header>
+
+<div class="tabs">
+  <div class="tab active" data-len="2">2 characters <span class="cnt">1,521</span></div>
+  <div class="tab" data-len="3">3 characters <span class="cnt">59,319</span></div>
+</div>
+
+<div class="controls">
+  <button id="run" class="primary">▶ Check visible</button>
+  <button id="stop" class="stop" disabled>■ Stop</button>
+  <button id="retry">⟳ Retry unsure</button>
+  <button id="reset">↺ Reset</button>
+  <div class="filters" id="filters">
+    <span class="chip on" data-f="all">All</span>
+    <span class="chip" data-f="scand">Only å/ä/ö</span>
+    <span class="chip" data-f="letters">Letters only</span>
+    <span class="chip" data-f="num">With digits</span>
+    <span class="chip" data-f="freeonly">Only free</span>
+  </div>
+</div>
+
+<div class="timer">
+  <div class="box done"><span class="k">Checked</span><span class="v" id="t-checked">0 / 0</span></div>
+  <div class="box eta"><span class="k">Time remaining</span><span class="v" id="t-eta">—</span></div>
+  <div class="box"><span class="k">Elapsed</span><span class="v" id="t-elapsed">0:00</span></div>
+  <div class="box rate"><span class="k">Speed</span><span class="v" id="t-rate">— /min</span></div>
+</div>
+
+<div class="progress"><div class="bar" id="bar"></div></div>
+<div class="stats">
+  <span class="s-free">Free <b id="st-free">0</b></span>
+  <span>Taken <b id="st-taken">0</b></span>
+  <span class="s-err">Unsure <b id="st-err">0</b></span>
+  <span>Remaining <b id="st-remaining">0</b></span>
+</div>
+
+<div class="virt-note" id="virtnote" style="display:none"></div>
+<div class="grid" id="grid"></div>
+
+<div class="legend">
+  <span class="k"><span class="sw free"></span> free</span>
+  <span class="k"><span class="sw taken"></span> taken</span>
+  <span class="k"><span class="sw check"></span> checking</span>
+  <span class="k"><span class="sw err"></span> error / unsure</span>
+  <span class="k"><span class="sw scand"></span> contains å/ä/ö (IDN)</span>
+</div>
+
+<div class="freelist" id="freelist" style="display:none">
+  <div class="head">
+    <h3>Free domains found</h3>
+    <button class="copybtn" id="copyfree">⧉ Copy list</button>
+  </div>
+  <div class="items" id="freeitems"></div>
+</div>
+
+<div class="src-row">
+  <span>Data source:</span>
+  <select id="source">
+    <option value="rdaporg">rdap.org (IETF bootstrap · 404 = free)</option>
+    <option value="whodat">who-dat.as93.net (CORS-friendly fallback)</option>
+  </select>
+  <span class="sep">·</span>
+  <span>Delay between requests (ms):</span>
+  <input type="number" id="delay" value="1100" min="150" step="50">
+  <span class="sep">·</span>
+  <span>Concurrency:</span>
+  <input type="number" id="concurrency" value="1" min="1" max="3" step="1">
+  <span id="srcnote"></span>
+</div>
+
+<div class="note">
+  <b>About rate limits &mdash; read this first.</b> Public, free RDAP endpoints throttle you. rdap.org sits behind Cloudflare and allows roughly <b>10 requests per 10 seconds</b>; go faster and you get HTTP 429 (rate limited). A red "unsure" cell means the check failed &mdash; usually a rate limit &mdash; it does <b>not</b> mean the domain is taken or free. This tool protects you automatically: it keeps requests serial by default, backs off and slows down when it sees 429s, and re-queues throttled cells for a second pass. Practical tips: keep the delay at <b>1100 ms</b> or higher, leave concurrency at <b>1</b> for rdap.org, scan in smaller batches using the filters, and press <b>"Retry unsure"</b> after a run to clean up leftovers.<br><br>
+  <b>Where the free ones hide.</b> Pure two-letter combos (aa–zz) are essentially all registered. Your best odds are combos with <b>digits</b> or the <b>å/ä/ö</b> letters, and of course the much larger 3-character space.<br><br>
+  <b>Heads up on 3 characters:</b> that is 59,319 combinations. At a safe ~1 request/second a full scan takes many hours &mdash; the timer shows a live estimate. Use the filters to scan a slice at a time (e.g. only-digits or only-å/ä/ö) instead of the whole set at once.<br><br>
+  Confirm and register a free name via the official search at <a class="ext" href="https://registry.domain.fi/search/fi/app/domainsearch" target="_blank" rel="noopener">registry.domain.fi</a>. Registration always goes through an accredited registrar (Zoner, Louhi, Domainhotelli, etc.). Note: some short names are <b>premium-priced</b>.
+</div>
+
+<script>
+"use strict";
+
+// ---- character set ----
+const LETTERS = [...'abcdefghijklmnopqrstuvwxyzåäö']; // 26 + å ä ö = 29
+const DIGITS  = [...'0123456789'];                    // 10
+const CHARS   = [...LETTERS, ...DIGITS];              // 39
+const SCAND   = new Set(['å','ä','ö']);
+
+// ---- state ----
+const grid = document.getElementById('grid');
+let COMBOS = [];                 // active set for the selected length
+const cellMap = new Map();       // label -> DOM node (only rendered cells)
+let currentLen = 2;
+let currentFilter = 'all';
+let running = false, abort = false;
+
+// timing
+let startTime = 0;
+let checkedThisRun = 0;          // successful+errored checks in the current run (for rate)
+let tickHandle = null;
+
+// cache combos per length so status survives tab switches within a session
+const cache = { 2:null, 3:null };
+
+function buildCombos(len){
+  if (cache[len]) return cache[len];
+  const arr = [];
+  if (len===2){
+    for (const a of CHARS) for (const b of CHARS){
+      arr.push(makeCombo(a+b));
+    }
+  } else {
+    for (const a of CHARS) for (const b of CHARS) for (const c of CHARS){
+      arr.push(makeCombo(a+b+c));
+    }
+  }
+  cache[len] = arr;
+  return arr;
+}
+
+function makeCombo(label){
+  let hasScand=false, hasNum=false, allLetters=true;
+  for (const ch of label){
+    if (SCAND.has(ch)) hasScand=true;
+    if (DIGITS.includes(ch)) { hasNum=true; allLetters=false; }
+  }
+  return { label, hasScand, hasNum, isLetters:allLetters, status:'pending' };
+}
+
+function passesFilter(c){
+  switch(currentFilter){
+    case 'scand':    return c.hasScand;
+    case 'letters':  return c.isLetters;
+    case 'num':      return c.hasNum;
+    case 'freeonly': return c.status==='free';
+    default:         return true;
+  }
+}
+
+// ---- rendering ----
+// For the 3-char set the visible list can be huge; cap DOM nodes for responsiveness.
+const RENDER_CAP = 4000;
+
+function render(){
+  grid.innerHTML='';
+  cellMap.clear();
+  grid.className = 'grid'+(currentLen===3?' len3':'');
+  const visible = COMBOS.filter(passesFilter);
+  const virtnote = document.getElementById('virtnote');
+
+  let toRender = visible;
+  if (visible.length > RENDER_CAP){
+    toRender = visible.slice(0, RENDER_CAP);
+    virtnote.style.display='block';
+    virtnote.innerHTML = `Showing the first <b>${RENDER_CAP.toLocaleString()}</b> of <b>${visible.length.toLocaleString()}</b> cells for performance. `+
+      `All ${visible.length.toLocaleString()} are still scanned and counted &mdash; narrow the view with the filters to see specific ones. `+
+      `Free domains always appear in the list at the bottom.`;
+  } else {
+    virtnote.style.display='none';
+  }
+
+  const frag = document.createDocumentFragment();
+  for (const c of toRender){
+    const div = document.createElement('div');
+    div.className = 'cell '+c.status+(c.hasScand?' scand':'');
+    paintCell(div, c);
+    frag.appendChild(div);
+    cellMap.set(c.label, div);
+  }
+  grid.appendChild(frag);
+  updateStats();
+  updateFreeList();
+}
+
+function paintCell(div, c){
+  if (c.status==='free'){
+    div.innerHTML = `<a href="https://registry.domain.fi/search/fi/app/domainsearch" target="_blank" rel="noopener" title="${c.label}.fi — free, open official search"><span class="lbl">${c.label}</span></a>`;
+  } else {
+    div.innerHTML = `<span class="lbl" title="${c.label}.fi${c.hasScand?' (IDN)':''}">${c.label}</span>`;
+  }
+}
+
+function setStatus(c, status){
+  c.status = status;
+  const div = cellMap.get(c.label);
+  if (div){
+    div.className = 'cell '+status+(c.hasScand?' scand':'');
+    paintCell(div, c);
+  }
+  updateStats();
+  updateFreeList();
+}
+
+// ---- stats + timer ----
+function counts(){
+  let free=0,taken=0,err=0,done=0;
+  for (const c of COMBOS){
+    if (c.status==='free'){free++;done++;}
+    else if (c.status==='taken'){taken++;done++;}
+    else if (c.status==='err'){err++;done++;}
+  }
+  return {free,taken,err,done,total:COMBOS.length,remaining:COMBOS.length-done};
+}
+
+function updateStats(){
+  const c = counts();
+  document.getElementById('st-free').textContent = c.free.toLocaleString();
+  document.getElementById('st-taken').textContent = c.taken.toLocaleString();
+  document.getElementById('st-err').textContent = c.err.toLocaleString();
+  document.getElementById('st-remaining').textContent = c.remaining.toLocaleString();
+  document.getElementById('t-checked').textContent = c.done.toLocaleString()+' / '+c.total.toLocaleString();
+  document.getElementById('bar').style.width = (c.total? c.done/c.total*100 : 0)+'%';
+}
+
+function fmtDuration(sec){
+  if (!isFinite(sec) || sec<0) return '—';
+  sec = Math.round(sec);
+  const d = Math.floor(sec/86400);
+  const h = Math.floor((sec%86400)/3600);
+  const m = Math.floor((sec%3600)/60);
+  const s = sec%60;
+  if (d>0) return `${d}d ${h}h ${m}m`;
+  if (h>0) return `${h}h ${m}m ${s}s`;
+  if (m>0) return `${m}:${String(s).padStart(2,'0')}`;
+  return `0:${String(s).padStart(2,'0')}`;
+}
+
+// The ETA is based on how many still need checking in the *current filter view*
+// (that is what a run actually processes) and the effective per-request time.
+function remainingInView(){
+  let n=0;
+  for (const c of COMBOS){
+    if (passesFilter(c) && (c.status==='pending' || c.status==='queued' || c.status==='checking')) n++;
+  }
+  return n;
+}
+
+function effectivePerRequestSec(){
+  const delay = Math.max(150, parseInt(document.getElementById('delay').value)||1100);
+  const conc  = Math.max(1, Math.min(3, parseInt(document.getElementById('concurrency').value)||1));
+  // measured rate wins once we have a few samples
+  if (running && checkedThisRun >= 5 && startTime){
+    const elapsed = (performance.now()-startTime)/1000;
+    if (elapsed>0) return elapsed/checkedThisRun;
+  }
+  // otherwise estimate from settings: network cost ~250ms per request, divided by concurrency
+  return (delay + 250) / conc / 1000;
+}
+
+function tick(){
+  // elapsed
+  if (running && startTime){
+    document.getElementById('t-elapsed').textContent = fmtDuration((performance.now()-startTime)/1000);
+  }
+  // speed
+  const per = effectivePerRequestSec();
+  const perMin = per>0 ? Math.round(60/per) : 0;
+  document.getElementById('t-rate').textContent = perMin>0 ? perMin.toLocaleString()+' /min' : '— /min';
+  // eta
+  const rem = remainingInView();
+  document.getElementById('t-eta').textContent = rem>0 ? fmtDuration(rem*per) : (running?'finishing…':'—');
+}
+
+function startTicker(){ if (!tickHandle) tickHandle = setInterval(tick, 500); tick(); }
+function stopTicker(){ if (tickHandle){ clearInterval(tickHandle); tickHandle=null; } tick(); }
+
+// ---- free list ----
+function updateFreeList(){
+  const free = COMBOS.filter(c=>c.status==='free');
+  const box = document.getElementById('freelist');
+  const items = document.getElementById('freeitems');
+  if (free.length===0){ box.style.display='none'; return; }
+  box.style.display='block';
+  items.innerHTML = free.map(c=>
+    `<span class="fi"><a href="https://registry.domain.fi/search/fi/app/domainsearch" target="_blank" rel="noopener">${c.label}.fi</a></span>`
+  ).join('');
+}
+
+document.getElementById('copyfree').onclick = ()=>{
+  const free = COMBOS.filter(c=>c.status==='free').map(c=>c.label+'.fi').join('\n');
+  if (!free) return;
+  navigator.clipboard?.writeText(free).then(()=>{
+    const b=document.getElementById('copyfree'); const t=b.textContent;
+    b.textContent='✓ Copied'; setTimeout(()=>b.textContent=t,1200);
+  }).catch(()=>{});
+};
+
+// ---- IDN -> punycode (APIs need ASCII/xn-- form) ----
+function toAscii(label){
+  try{
+    const u = new URL('http://'+label+'.fi');
+    return u.hostname; // xn--... for å/ä/ö, plain otherwise
+  }catch(e){ return label+'.fi'; }
+}
+
+// ---- the actual availability check ----
+// throws {rate:true} on 429, {http:code} on other HTTP errors, or {net:true} on network failure
+async function checkDomain(label, source){
+  const ascii = toAscii(label);
+  try{
+    if (source==='whodat'){
+      const r = await fetch('https://who-dat.as93.net/'+ascii, {headers:{'Accept':'application/json'}});
+      if (r.status===429) throw {rate:true};
+      if (!r.ok){
+        const j = await r.json().catch(()=>null);
+        if (j && j.error && /not found|no match|available/i.test(JSON.stringify(j.error))) return 'free';
+        throw {http:r.status};
+      }
+      const j = await r.json();
+      if (j.isRegistered === false) return 'free';
+      if (j.isRegistered === true)  return 'taken';
+      if (j.domain && (j.domain.status || j.domain.created_date || j.registrar)) return 'taken';
+      return 'taken';
+    } else {
+      const r = await fetch('https://rdap.org/domain/'+ascii, {headers:{'Accept':'application/rdap+json'}});
+      if (r.status===429) throw {rate:true};
+      if (r.status===404) return 'free';
+      if (r.ok) return 'taken';
+      throw {http:r.status};
+    }
+  } catch(e){
+    if (e && (e.rate || e.http!==undefined)) throw e;
+    // fetch() rejects (network/CORS/DNS) -> treat as transient network error
+    throw {net:true};
+  }
+}
+
+const sleep = ms => new Promise(r=>setTimeout(r,ms));
+
+// ---- run loop ----
+// Serial by default (concurrency 1) which is safest for rdap.org. If concurrency>1,
+// we run that many workers pulling from a shared queue, still spacing each worker's
+// requests by `delay`. Rate-limited cells are re-queued for a second pass.
+async function run(){
+  if (running) return;
+  running = true; abort = false;
+  setRunningUI(true);
+
+  const source = document.getElementById('source').value;
+  let delay = Math.max(150, parseInt(document.getElementById('delay').value)||1100);
+  const conc = Math.max(1, Math.min(3, parseInt(document.getElementById('concurrency').value)||1));
+
+  startTime = performance.now();
+  checkedThisRun = 0;
+  startTicker();
+
+  let consecutiveRate = 0;
+
+  // two passes so cells bounced by rate limits get another try automatically
+  for (let pass=0; pass<2 && !abort; pass++){
+    const queue = COMBOS.filter(c=> passesFilter(c) && c.status==='pending');
+    if (queue.length===0) break;
+
+    // mark everything queued (visual hint) then hand out to workers
+    for (const c of queue){ if (c.status==='pending') { c.status='queued'; const d=cellMap.get(c.label); if(d){d.className='cell queued'+(c.hasScand?' scand':'');} } }
+
+    let idx = 0;
+    const takeNext = ()=> (idx<queue.length ? queue[idx++] : null);
+
+    async function worker(){
+      while(!abort){
+        const c = takeNext();
+        if (!c) break;
+        if (c.status!=='queued' && c.status!=='pending') continue;
+        setStatus(c,'checking');
+
+        let attempt=0, settled=false;
+        while(attempt<2 && !settled && !abort){
+          try{
+            const res = await checkDomain(c.label, source);
+            setStatus(c, res);
+            settled=true;
+            consecutiveRate = 0;
+            checkedThisRun++;
+          }catch(e){
+            if (e && e.rate){
+              // rate limited: slow global pace, back off, re-queue this cell
+              consecutiveRate++;
+              delay = Math.min(delay + 250, 5000);
+              const backoff = Math.min(2000 + consecutiveRate*1000, 10000);
+              setStatus(c,'pending');   // picked up in the next pass
+              await sleep(backoff);
+              settled=true;
+            } else {
+              // network or http error: one quick retry, then mark unsure
+              attempt++;
+              if (attempt>=2){ setStatus(c,'err'); settled=true; checkedThisRun++; }
+              else await sleep(600);
+            }
+          }
+        }
+        if (!abort) await sleep(delay);
+      }
+    }
+
+    const workers = [];
+    for (let i=0;i<conc;i++) workers.push(worker());
+    await Promise.all(workers);
+  }
+
+  // any cells still 'queued' (e.g. aborted) fall back to pending so they can be resumed
+  for (const c of COMBOS){ if (c.status==='queued') setStatus(c,'pending'); }
+
+  running=false;
+  setRunningUI(false);
+  stopTicker();
+}
+
+function retryUncertain(){
+  if (running) return;
+  for (const c of COMBOS){
+    if (c.status==='err' || c.status==='checking' || c.status==='queued') c.status='pending';
+  }
+  render();
+  run();
+}
+
+function setRunningUI(on){
+  document.getElementById('run').disabled = on;
+  document.getElementById('stop').disabled = !on;
+  document.getElementById('reset').disabled = on;
+  document.getElementById('retry').disabled = on;
+  document.querySelectorAll('.tab').forEach(t=>t.style.pointerEvents = on?'none':'auto');
+}
+
+// ---- events ----
+document.getElementById('run').onclick = run;
+document.getElementById('retry').onclick = retryUncertain;
+document.getElementById('stop').onclick = ()=>{ abort=true; };
+document.getElementById('reset').onclick = ()=>{
+  if (running) return;
+  for (const c of COMBOS) c.status='pending';
+  startTime=0; checkedThisRun=0;
+  document.getElementById('t-elapsed').textContent='0:00';
+  render();
+  tick();
+};
+
+document.querySelectorAll('.tab').forEach(tab=>{
+  tab.onclick = ()=>{
+    if (running) return;
+    document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+    tab.classList.add('active');
+    currentLen = parseInt(tab.dataset.len);
+    COMBOS = buildCombos(currentLen);
+    render();
+    tick();
+  };
+});
+
+document.querySelectorAll('.chip').forEach(ch=>{
+  ch.onclick = ()=>{
+    document.querySelectorAll('.chip').forEach(x=>x.classList.remove('on'));
+    ch.classList.add('on');
+    currentFilter = ch.dataset.f;
+    render();
+    tick();
+  };
+});
+
+document.getElementById('source').onchange = ()=>{
+  const s=document.getElementById('source').value;
+  document.getElementById('srcnote').textContent = s==='rdaporg'
+    ? '· 404 = free, 200 = taken' : '· uses the isRegistered field';
+  // who-dat is a single small instance; nudge concurrency back to 1
+  if (s==='whodat') document.getElementById('concurrency').value = 1;
+};
+['delay','concurrency'].forEach(id=> document.getElementById(id).addEventListener('input', tick));
+
+// ---- init ----
+COMBOS = buildCombos(2);
+render();
+document.getElementById('srcnote').textContent = '· 404 = free, 200 = taken';
+tick();
+</script>
+</body>
+</html>
