@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>.fi Short Domain Finder — free 2 &amp; 3 character .fi domains</title>
-<meta name="description" content="Scan every short .fi domain (2 and 3 characters, letters + digits + å ä ö) and find which ones are still free, using public RDAP.">
+<title>.fi Short Domain Finder — available 2 &amp; 3 character .fi domains</title>
+<meta name="description" content="Scan every short .fi domain (2 and 3 characters, letters + digits + national characters) and find which ones are still available, using public RDAP.">
 <style>
   :root{
     --bg:#0a0e14;
@@ -56,6 +56,16 @@
   .chip{font-size:11px;padding:6px 11px;border:1px solid var(--line);border-radius:20px;cursor:pointer;color:var(--muted);user-select:none;transition:.15s}
   .chip:hover{color:var(--text)}
   .chip.on{border-color:var(--free);color:var(--free);background:rgba(34,211,238,.06)}
+
+  .charset{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:12px 0 2px;font-size:11px;color:var(--muted)}
+  .cs-label{text-transform:uppercase;letter-spacing:1px;color:var(--muted)}
+  .cs-toggle{display:inline-flex;align-items:center;gap:6px;padding:5px 10px;border:1px solid var(--line);border-radius:5px;cursor:pointer;color:var(--text);user-select:none;transition:.15s}
+  .cs-toggle:hover{border-color:var(--free)}
+  .cs-toggle.locked{opacity:.7;cursor:default}
+  .cs-toggle.locked:hover{border-color:var(--line)}
+  .cs-toggle input{accent-color:var(--free);cursor:pointer}
+  .cs-toggle.locked input{cursor:default}
+  .cs-hint{color:var(--scand);font-size:10px}
 
   /* timer / ETA panel */
   .timer{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:2px;margin:16px 0 4px;
@@ -126,13 +136,21 @@
 <body>
 <header>
   <div class="title"><span class="accent">.fi</span> &nbsp;short domain finder</div>
-  <div class="sub">Scan every short <b>.fi</b> domain and see which are still free. Allowed characters: 26 letters (a–z), the Finnish letters <code>å ä ö</code>, and digits 0–9 &mdash; 39 characters per position. A hyphen may not be first or last, so pure 2/3-character combos never contain one. Cells with a violet dot are internationalized (IDN) names containing å/ä/ö. Checks use public <b>RDAP</b> data: results are a strong hint, but always confirm on the official registry before you register.</div>
+  <div class="sub">Scan every short <b>.fi</b> domain and see which are still available. Allowed characters: letters a–z, digits 0–9, the Finnish letters <code>å ä ö</code>, and the full Sámi set &mdash; toggle the groups below. A hyphen may not be first or last, so it can only appear in the middle of a 3-character name. Cells with a violet dot are internationalized (IDN) names with national characters. Checks use public <b>RDAP</b> data: results are a strong hint, but always confirm on the official registry before you register.</div>
   <div class="repo-link">Open source &mdash; fork it, self-host it, improve it. See the <b>README</b> in the repository.</div>
 </header>
 
 <div class="tabs">
-  <div class="tab active" data-len="2">2 characters <span class="cnt">1,521</span></div>
-  <div class="tab" data-len="3">3 characters <span class="cnt">59,319</span></div>
+  <div class="tab active" data-len="2">2 characters <span class="cnt" id="cnt2">—</span></div>
+  <div class="tab" data-len="3">3 characters <span class="cnt" id="cnt3">—</span></div>
+</div>
+
+<div class="charset">
+  <span class="cs-label">Character set:</span>
+  <label class="cs-toggle locked" title="a–z and 0–9 are always included"><input type="checkbox" checked disabled> a–z 0–9</label>
+  <label class="cs-toggle"><input type="checkbox" id="cg-finnish" checked> å ä ö <span class="cs-hint">(Finnish)</span></label>
+  <label class="cs-toggle"><input type="checkbox" id="cg-sami"> Sámi <span class="cs-hint">á â č đ ǥ ǧ ǩ ŋ õ š ŧ ž ʒ ǯ</span></label>
+  <label class="cs-toggle"><input type="checkbox" id="cg-hyphen"> hyphen <span class="cs-hint">(3-char middle only)</span></label>
 </div>
 
 <div class="controls">
@@ -142,10 +160,10 @@
   <button id="reset">↺ Reset</button>
   <div class="filters" id="filters">
     <span class="chip on" data-f="all">All</span>
-    <span class="chip" data-f="scand">Only å/ä/ö</span>
+    <span class="chip" data-f="scand">Only national</span>
     <span class="chip" data-f="letters">Letters only</span>
     <span class="chip" data-f="num">With digits</span>
-    <span class="chip" data-f="freeonly">Only free</span>
+    <span class="chip" data-f="freeonly">Only available</span>
   </div>
 </div>
 
@@ -158,7 +176,7 @@
 
 <div class="progress"><div class="bar" id="bar"></div></div>
 <div class="stats">
-  <span class="s-free">Free <b id="st-free">0</b></span>
+  <span class="s-free">Available <b id="st-free">0</b></span>
   <span>Taken <b id="st-taken">0</b></span>
   <span class="s-err">Unsure <b id="st-err">0</b></span>
   <span>Remaining <b id="st-remaining">0</b></span>
@@ -168,16 +186,16 @@
 <div class="grid" id="grid"></div>
 
 <div class="legend">
-  <span class="k"><span class="sw free"></span> free</span>
+  <span class="k"><span class="sw free"></span> available</span>
   <span class="k"><span class="sw taken"></span> taken</span>
   <span class="k"><span class="sw check"></span> checking</span>
   <span class="k"><span class="sw err"></span> error / unsure</span>
-  <span class="k"><span class="sw scand"></span> contains å/ä/ö (IDN)</span>
+  <span class="k"><span class="sw scand"></span> contains national char / IDN</span>
 </div>
 
 <div class="freelist" id="freelist" style="display:none">
   <div class="head">
-    <h3>Free domains found</h3>
+    <h3>Available domains found</h3>
     <button class="copybtn" id="copyfree">⧉ Copy list</button>
   </div>
   <div class="items" id="freeitems"></div>
@@ -186,7 +204,7 @@
 <div class="src-row">
   <span>Data source:</span>
   <select id="source">
-    <option value="rdaporg">rdap.org (IETF bootstrap · 404 = free)</option>
+    <option value="rdaporg">rdap.org (IETF bootstrap · 404 = available)</option>
     <option value="whodat">who-dat.as93.net (CORS-friendly fallback)</option>
   </select>
   <span class="sep">·</span>
@@ -199,20 +217,45 @@
 </div>
 
 <div class="note">
-  <b>About rate limits &mdash; read this first.</b> Public, free RDAP endpoints throttle you. rdap.org sits behind Cloudflare and allows roughly <b>10 requests per 10 seconds</b>; go faster and you get HTTP 429 (rate limited). A red "unsure" cell means the check failed &mdash; usually a rate limit &mdash; it does <b>not</b> mean the domain is taken or free. This tool protects you automatically: it keeps requests serial by default, backs off and slows down when it sees 429s, and re-queues throttled cells for a second pass. Practical tips: keep the delay at <b>1100 ms</b> or higher, leave concurrency at <b>1</b> for rdap.org, scan in smaller batches using the filters, and press <b>"Retry unsure"</b> after a run to clean up leftovers.<br><br>
-  <b>Where the free ones hide.</b> Pure two-letter combos (aa–zz) are essentially all registered. Your best odds are combos with <b>digits</b> or the <b>å/ä/ö</b> letters, and of course the much larger 3-character space.<br><br>
-  <b>Heads up on 3 characters:</b> that is 59,319 combinations. At a safe ~1 request/second a full scan takes many hours &mdash; the timer shows a live estimate. Use the filters to scan a slice at a time (e.g. only-digits or only-å/ä/ö) instead of the whole set at once.<br><br>
-  Confirm and register a free name via the official search at <a class="ext" href="https://registry.domain.fi/search/fi/app/domainsearch" target="_blank" rel="noopener">registry.domain.fi</a>. Registration always goes through an accredited registrar (Zoner, Louhi, Domainhotelli, etc.). Note: some short names are <b>premium-priced</b>.
+  <b>About rate limits &mdash; read this first.</b> Public, no-cost RDAP endpoints throttle you. rdap.org sits behind Cloudflare and allows roughly <b>10 requests per 10 seconds</b>; go faster and you get HTTP 429 (rate limited). A red "unsure" cell means the check failed &mdash; usually a rate limit &mdash; it does <b>not</b> mean the domain is taken or available. This tool protects you automatically: it keeps requests serial by default, backs off and slows down when it sees 429s, and re-queues throttled cells for a second pass. Practical tips: keep the delay at <b>1100 ms</b> or higher, leave concurrency at <b>1</b> for rdap.org, scan in smaller batches using the filters, and press <b>"Retry unsure"</b> after a run to clean up leftovers.<br><br>
+  <b>Complete coverage.</b> Every combination that <code>.fi</code> permits is reachable here. The base set (a–z, 0–9) is always on; toggle the <b>å ä ö</b>, <b>Sámi</b>, and <b>hyphen</b> groups above to include them. A hyphen may not be first or last, so it only appears in the middle of a 3-character name (never in a 2-character one). The live counter next to each tab shows exactly how many combinations the current character set produces.<br><br>
+  <b>Where the available ones hide.</b> Pure two-letter combos (aa–zz) are essentially all registered. Your best odds are combos with <b>digits</b> or <b>national characters</b> (å ä ö / Sámi), and of course the much larger 3-character space.<br><br>
+  <b>Heads up on scan size:</b> the full 3-character Finnish set is ~59k combinations, and enabling Sámi pushes it far higher. At a safe ~1 request/second a complete sweep takes many hours to days &mdash; the timer shows a live estimate. Scan a slice at a time with the filters (e.g. only-digits or only-national) rather than everything at once.<br><br>
+  "Available" here means <b>not currently in the registry</b> per RDAP &mdash; it does not guarantee you can register it (some short names are <b>reserved</b> or <b>premium-priced</b>). Confirm and register via the official search at <a class="ext" href="https://registry.domain.fi/search/fi/app/domainsearch" target="_blank" rel="noopener">registry.domain.fi</a>. Registration always goes through an accredited registrar (Zoner, Louhi, Domainhotelli, etc.).
 </div>
 
 <script>
 "use strict";
 
-// ---- character set ----
-const LETTERS = [...'abcdefghijklmnopqrstuvwxyzåäö']; // 26 + å ä ö = 29
-const DIGITS  = [...'0123456789'];                    // 10
-const CHARS   = [...LETTERS, ...DIGITS];              // 39
-const SCAND   = new Set(['å','ä','ö']);
+// ---- character set (full official .fi repertoire) ----
+// Base ASCII allowed in any position:
+const BASE_LETTERS = [...'abcdefghijklmnopqrstuvwxyz']; // 26
+const DIGITS       = [...'0123456789'];                 // 10
+// Finnish national characters:
+const FINNISH      = [...'åäö'];                         // 3
+// Sámi + other national characters permitted by Traficom for .fi:
+const SAMI         = [...'áâčđǥǧǩŋõšŧžʒǯ'];               // 14  (ä å ö already in FINNISH)
+// Hyphen is allowed only in a NON-edge position (never first/last char).
+const HYPHEN = '-';
+
+const NAT_SET   = new Set([...FINNISH, ...SAMI]); // "national" characters (get the violet dot)
+const DIGIT_SET = new Set(DIGITS);
+
+// which character groups are active (toggled by the user)
+const groupState = { finnish:true, sami:false, hyphen:false };
+
+// The set of characters allowed at an EDGE position (first/last) — no hyphen.
+function edgeChars(){
+  let c = [...BASE_LETTERS, ...DIGITS];
+  if (groupState.finnish) c = c.concat(FINNISH);
+  if (groupState.sami)    c = c.concat(SAMI);
+  return c;
+}
+// The set allowed at a MIDDLE position — same as edge, plus hyphen if enabled.
+function middleChars(){
+  const c = edgeChars();
+  return groupState.hyphen ? c.concat([HYPHEN]) : c;
+}
 
 // ---- state ----
 const grid = document.getElementById('grid');
@@ -227,32 +270,38 @@ let startTime = 0;
 let checkedThisRun = 0;          // successful+errored checks in the current run (for rate)
 let tickHandle = null;
 
-// cache combos per length so status survives tab switches within a session
-const cache = { 2:null, 3:null };
+// Combos depend on BOTH length and the active character groups, so cache by a key.
+const cache = {};
+function groupKey(){ return (groupState.finnish?'F':'')+(groupState.sami?'S':'')+(groupState.hyphen?'H':''); }
 
 function buildCombos(len){
-  if (cache[len]) return cache[len];
+  const key = len+':'+groupKey();
+  if (cache[key]) return cache[key];
   const arr = [];
+  const edge = edgeChars();      // positions 1 and last
   if (len===2){
-    for (const a of CHARS) for (const b of CHARS){
+    // both positions are edges (adjacent first+last) => no hyphen possible, ever
+    for (const a of edge) for (const b of edge){
       arr.push(makeCombo(a+b));
     }
-  } else {
-    for (const a of CHARS) for (const b of CHARS) for (const c of CHARS){
+  } else { // len === 3
+    const mid = middleChars();   // middle position may be a hyphen
+    for (const a of edge) for (const b of mid) for (const c of edge){
       arr.push(makeCombo(a+b+c));
     }
   }
-  cache[len] = arr;
+  cache[key] = arr;
   return arr;
 }
 
 function makeCombo(label){
-  let hasScand=false, hasNum=false, allLetters=true;
+  let hasScand=false, hasNum=false, allLetters=true, hasHyphen=false;
   for (const ch of label){
-    if (SCAND.has(ch)) hasScand=true;
-    if (DIGITS.includes(ch)) { hasNum=true; allLetters=false; }
+    if (NAT_SET.has(ch)) hasScand=true;
+    if (DIGIT_SET.has(ch)) { hasNum=true; allLetters=false; }
+    if (ch===HYPHEN) { hasHyphen=true; allLetters=false; }
   }
-  return { label, hasScand, hasNum, isLetters:allLetters, status:'pending' };
+  return { label, hasScand, hasNum, hasHyphen, isLetters:allLetters, status:'pending' };
 }
 
 function passesFilter(c){
@@ -302,7 +351,7 @@ function render(){
 
 function paintCell(div, c){
   if (c.status==='free'){
-    div.innerHTML = `<a href="https://registry.domain.fi/search/fi/app/domainsearch" target="_blank" rel="noopener" title="${c.label}.fi — free, open official search"><span class="lbl">${c.label}</span></a>`;
+    div.innerHTML = `<a href="https://registry.domain.fi/search/fi/app/domainsearch" target="_blank" rel="noopener" title="${c.label}.fi — available, open official search"><span class="lbl">${c.label}</span></a>`;
   } else {
     div.innerHTML = `<span class="lbl" title="${c.label}.fi${c.hasScand?' (IDN)':''}">${c.label}</span>`;
   }
@@ -549,6 +598,7 @@ function setRunningUI(on){
   document.getElementById('reset').disabled = on;
   document.getElementById('retry').disabled = on;
   document.querySelectorAll('.tab').forEach(t=>t.style.pointerEvents = on?'none':'auto');
+  ['cg-finnish','cg-sami','cg-hyphen'].forEach(id=>{ document.getElementById(id).disabled = on; });
 }
 
 // ---- events ----
@@ -564,15 +614,29 @@ document.getElementById('reset').onclick = ()=>{
   tick();
 };
 
+// keep the two tab counters in sync with the active character set
+function updateTabCounts(){
+  const edge = edgeChars().length;
+  const mid  = middleChars().length;
+  document.getElementById('cnt2').textContent = (edge*edge).toLocaleString();
+  document.getElementById('cnt3').textContent = (edge*mid*edge).toLocaleString();
+}
+
+// rebuild the active combo set after a length or character-set change
+function rebuild(){
+  COMBOS = buildCombos(currentLen);
+  updateTabCounts();
+  render();
+  tick();
+}
+
 document.querySelectorAll('.tab').forEach(tab=>{
   tab.onclick = ()=>{
     if (running) return;
     document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
     tab.classList.add('active');
     currentLen = parseInt(tab.dataset.len);
-    COMBOS = buildCombos(currentLen);
-    render();
-    tick();
+    rebuild();
   };
 });
 
@@ -586,10 +650,22 @@ document.querySelectorAll('.chip').forEach(ch=>{
   };
 });
 
+// character-set group toggles — changing these regenerates the full combo set
+function bindGroup(id, key){
+  document.getElementById(id).addEventListener('change', e=>{
+    if (running){ e.target.checked = groupState[key]; return; } // don't change mid-run
+    groupState[key] = e.target.checked;
+    rebuild();
+  });
+}
+bindGroup('cg-finnish','finnish');
+bindGroup('cg-sami','sami');
+bindGroup('cg-hyphen','hyphen');
+
 document.getElementById('source').onchange = ()=>{
   const s=document.getElementById('source').value;
   document.getElementById('srcnote').textContent = s==='rdaporg'
-    ? '· 404 = free, 200 = taken' : '· uses the isRegistered field';
+    ? '· 404 = available, 200 = taken' : '· uses the isRegistered field';
   // who-dat is a single small instance; nudge concurrency back to 1
   if (s==='whodat') document.getElementById('concurrency').value = 1;
 };
@@ -597,8 +673,9 @@ document.getElementById('source').onchange = ()=>{
 
 // ---- init ----
 COMBOS = buildCombos(2);
+updateTabCounts();
 render();
-document.getElementById('srcnote').textContent = '· 404 = free, 200 = taken';
+document.getElementById('srcnote').textContent = '· 404 = available, 200 = taken';
 tick();
 </script>
 </body>
