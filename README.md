@@ -4,7 +4,7 @@ A single-page, no-build web tool that scans every short **.fi** domain and shows
 
 > **"Available" = not currently in the registry.** RDAP tells you whether a name exists right now — it does **not** guarantee you can buy it (some short names are *reserved* or *premium-priced*). Always confirm on the official registry before you register.
 
-**[▶ Live demo](#deploy-github-pages)** · No server, no API key, no dependencies — just one `index.html`.
+**[▶ Live demo](https://finland93.github.io/fi-domain-finder/)** · No server, no API key, no dependencies — just one `index.html`.
 
 ---
 
